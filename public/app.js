@@ -22,7 +22,7 @@ if ('serviceWorker' in navigator) {
 async function ClickedButton() {
 
     if (isConnected) {
-
+        isConnected = false;
         Disconnect_Device();
     }
     else {
@@ -54,7 +54,6 @@ async function Connect_to_Bluetooth() {
             bluetoothDevice = await navigator.bluetooth.requestDevice(
                 {
                     filters: [
-                        // { services: ["6e400001-b5a3-f393-e0a9-e50e24dcca9e"] }
                         { namePrefix: "DM" }
                     ],
                     optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
@@ -76,33 +75,36 @@ async function Connect_to_Bluetooth() {
 async function Disconnect() {
 
     console.log("Bluetooth Disconnected");
+    if (isConnected) {
+        exponentialBackoff(500 /* max retries */, 2 /* seconds delay */,
+            function toTry() {
+                console.log('Connecting to Bluetooth Device... ');
+                return bluetoothDevice.gatt.connect();
+            },
+            function success() {
+                console.log('> Bluetooth Device connected.');
+                fetchData();
+            },
+            async function fail() {
+                console.log('Failed to reconnect.');
+                console.log('Argh!' + error);
+                isConnected = false;
+                Bluetooth_Table.rows.item(0).cells.item(1).innerHTML = "Not Connected";
+                Bluetooth_Table.rows.item(1).cells.item(1).innerHTML = "Disconnected";
+                button.innerHTML = "Connect Bluetooth Devices";
 
-    exponentialBackoff(100 /* max retries */, 2 /* seconds delay */,
-        function toTry() {
-            console.log('Connecting to Bluetooth Device... ');
-            return bluetoothDevice.gatt.connect();
-        },
-        function success() {
-            console.log('> Bluetooth Device connected.');
-            fetchData();
-        },
-        async function fail() {
-            console.log('Failed to reconnect.');
-            console.log('Argh!' + error);
-            isConnected = false;
-            Bluetooth_Table.rows.item(0).cells.item(1).innerHTML = "Not Connected";
-            Bluetooth_Table.rows.item(1).cells.item(1).innerHTML = "Disconnected";
-            button.innerHTML = "Connect Bluetooth Devices";
+            });
+    }
 
-        });
 
 }
-async function Disconnect_Device() {
+function Disconnect_Device() {
 
-    await bluetoothDeviceServer.disconnect();
+    bluetoothDeviceServer.disconnect();
+    isConnected = false;
+    button.innerHTML = "Connect Bluetooth Devices";
     onResetButtonClick()
     console.log("Bluetooth Disconnected");
-    isConnected = false;
 
 }
 
@@ -216,7 +218,7 @@ function exponentialBackoff(max, delay, toTry, success, fail) {
             }
             console.log('Retrying in ' + delay + 's... (' + max + ' tries left)');
             setTimeout(function () {
-                exponentialBackoff(--max, delay * 1, toTry, success, fail);
+                exponentialBackoff(--max, delay, toTry, success, fail);
             }, delay * 1000);
         });
 }
