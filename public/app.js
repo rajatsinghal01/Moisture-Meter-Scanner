@@ -76,22 +76,25 @@ async function Connect_to_Bluetooth() {
 async function Disconnect() {
 
     console.log("Bluetooth Disconnected");
-    try {
-        connect();
-    }
-    catch (error) {
-        console.log('Argh!' + error);
-        isConnected = false;
-        Bluetooth_Table.rows.item(0).cells.item(1).innerHTML = "Not Connected";
-        Bluetooth_Table.rows.item(1).cells.item(1).innerHTML = "Disconnected";
-        button.innerHTML = "Connect Bluetooth Devices";
-        try {
-            await connect();
-        } catch (error) {
-            console.log('Argh! ' + error);
-        }
-    }
 
+    exponentialBackoff(100 /* max retries */, 2 /* seconds delay */,
+        function toTry() {
+            console.log('Connecting to Bluetooth Device... ');
+            return bluetoothDevice.gatt.connect();
+        },
+        function success() {
+            console.log('> Bluetooth Device connected.');
+            fetchData();
+        },
+        async function fail() {
+            console.log('Failed to reconnect.');
+            console.log('Argh!' + error);
+            isConnected = false;
+            Bluetooth_Table.rows.item(0).cells.item(1).innerHTML = "Not Connected";
+            Bluetooth_Table.rows.item(1).cells.item(1).innerHTML = "Disconnected";
+            button.innerHTML = "Connect Bluetooth Devices";
+
+        });
 
 }
 async function Disconnect_Device() {
@@ -108,18 +111,21 @@ async function connect() {
 
     console.log('Connecting to Bluetooth Device... ');
     connectedDevice_Server = await bluetoothDevice.gatt.connect();
-    // const infoService = await connectedDevice_Server.getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
-    // const infoCharacteristic = await infoService.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
-
     console.log('> Bluetooth Device connected.');
+    bluetoothDevice.addEventListener('gattserverdisconnected', Disconnect);
 
+    await fetchData();
+
+
+}
+async function fetchData() {
     bluetoothDeviceServer = connectedDevice_Server;
     isConnected = true;
 
     console.log(bluetoothDeviceServer);
 
     Bluetooth_Table.rows.item(1).cells.item(1).innerHTML = "CONNECTED";
-    button.innerHTML = "Disconnect"
+    button.innerHTML = "Disconnect";
 
     console.log('Getting Service...');
 
@@ -134,7 +140,6 @@ async function connect() {
     moisture = null;
     quantity = null;
 
-    bluetoothDevice.addEventListener('gattserverdisconnected', Disconnect);
     infoCharacteristic.addEventListener('characteristicvaluechanged', handleLevelChanged);
     onStartNotificationsButtonClick();
 }
@@ -202,4 +207,16 @@ function checkIsValid(variable) {
         return false;
     }
     return true;
+}
+function exponentialBackoff(max, delay, toTry, success, fail) {
+    toTry().then(result => success(result))
+        .catch(_ => {
+            if (max === 0) {
+                return fail();
+            }
+            console.log('Retrying in ' + delay + 's... (' + max + ' tries left)');
+            setTimeout(function () {
+                exponentialBackoff(--max, delay * 1, toTry, success, fail);
+            }, delay * 1000);
+        });
 }
